@@ -1,0 +1,108 @@
+#include <sys/wait.h>
+#include <netinet/in.h>    // for sockaddr_in
+#include <sys/types.h>    // for socket
+#include <sys/socket.h>    // for socket
+#include <stdio.h>        // for printf
+#include <stdlib.h>        // for exit
+#include <string.h>        // for bzero
+#include <unistd.h>
+
+
+#define PORT 6666
+#define LENGTH_OF_LISTEN  20
+#define BUFFER_SIZE 512
+#define FILE_NAME_MAX_SIZE 256
+
+
+
+int main(int argc, char **argv)
+{
+    //设置一个socket地址结构server_addr,代表服务器internet地址, 端口
+    struct sockaddr_in server_addr;
+    bzero(&server_addr,sizeof(server_addr)); //把一段内存区的内容全部设置为0
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htons(INADDR_ANY);
+    server_addr.sin_port = htons(PORT);
+ 
+    //创建用于internet的流协议(TCP)socket,用ssock代表服务器socket
+    int ssock = socket(PF_INET,SOCK_STREAM,0);
+    if( ssock < 0)
+    {
+        printf("Create Socket Failed!");
+        exit(1);
+    }
+
+     
+    //把socket和socket地址结构联系起来
+    if( bind(ssock,(struct sockaddr*)&server_addr,sizeof(server_addr)))
+    {
+        printf("Server Bind Port : %d Failed!", PORT); 
+        exit(1);
+    }
+ 
+    //ssock用于监听
+    if ( listen(ssock, LENGTH_OF_LISTEN) )
+    {
+        printf("Server Listen Failed!"); 
+        exit(1);
+    }
+    while (1) //服务器端要一直运行
+    {
+        //定义客户端的socket地址结构client_addr
+        struct sockaddr_in client_addr;
+        socklen_t length = sizeof(client_addr);
+ 
+        //接受一个到ssock代表的socket的一个连接
+        //如果没有连接请求,就等待到有连接请求--这是accept函数的特性
+        //accept函数返回一个新的socket,这个socket(new_ssock)用于同连接到的客户的通信
+        //new_ssock代表了服务器和客户端之间的一个通信通道
+        //accept函数把连接到的客户端信息填写到客户端的socket地址结构client_addr中
+        int new_ssock = accept(ssock,(struct sockaddr*)&client_addr,&length);
+        if ( new_ssock < 0)
+        {
+            printf("Server Accept Failed!\n");
+            break;
+        }
+         
+        char buffer[BUFFER_SIZE];
+        bzero(buffer, BUFFER_SIZE);
+        length = recv(new_ssock,buffer,BUFFER_SIZE,0);
+        if (length < 0)
+        {
+            printf("Server Recieve Data Failed!\n");
+            break;
+        }
+        // char file_name[FILE_NAME_MAX_SIZE+1];
+        // bzero(file_name, FILE_NAME_MAX_SIZE+1);
+        // strncpy(file_name, buffer, strlen(buffer)>FILE_NAME_MAX_SIZE?FILE_NAME_MAX_SIZE:strlen(buffer));
+
+        FILE  *fp = fopen(buffer,"r");
+        if(fp == NULL )
+        {
+            printf("File:\t%s Not Found\n", buffer);
+        }
+        else
+        {
+        	printf("File %s is exist\n",buffer);
+            bzero(buffer, BUFFER_SIZE);
+            printf("%s\n",buffer);
+            while( fread(buffer,sizeof(char),BUFFER_SIZE,fp) >0)
+            {
+                //发送buffer中的字符串到new_ssock,实际是给客户端
+                if(send(new_ssock,buffer,BUFFER_SIZE,0)<0)
+                {
+                    printf("Send File:\t%s Failed\n", buffer);
+                    break;
+                }
+                printf("Send Success\n");
+                bzero(buffer, BUFFER_SIZE);
+            }
+            fclose(fp);
+        }
+        //关闭与客户端的连接
+        close(new_ssock);
+    }
+    //关闭监听用的socket
+    close(ssock);
+    return 0;
+}
